@@ -1,6 +1,6 @@
 # MCQ Generator using python
-Objective Type Question generator
-bert-extractive summarizer used for extractive summarization
-keybert used for keyword extraction
-HTML page for taking input as a text document
+Objective-type Type Question generator <br>
+bert-extractive summarizer used for extractive summarization <br>
+keybert used for keyword extraction <br>
+HTML page for taking input as a text document <br>
 Please write any suggestions, highly recommended.
