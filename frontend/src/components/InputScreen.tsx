@@ -145,9 +145,14 @@ export function InputScreen({ onGenerate, isLoading }: InputScreenProps) {
           >
             <div className="space-y-6">
               <motion.div className="space-y-3">
-                <Label htmlFor="questions-slider" className="text-slate-700">
-                  Number of Questions
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="questions-slider" className="text-slate-700">
+                    Number of Questions
+                  </Label>
+                  <span className="text-lg font-semibold text-purple-600 bg-purple-50 px-3 py-1 rounded-lg">
+                    {numberOfQuestions}
+                  </span>
+                </div>
                 <div className="space-y-2">
                   <QuestionsSlider
                     id="questions-slider"

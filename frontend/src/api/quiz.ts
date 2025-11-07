@@ -1,6 +1,7 @@
 import { GenerateQuizRequest, GenerateQuizResponse } from '../types/api';
 
-const API_BASE = '/api';
+// Use environment variable or fallback
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export async function generateQuiz(params: GenerateQuizRequest): Promise<GenerateQuizResponse> {
   try {
@@ -11,6 +12,10 @@ export async function generateQuiz(params: GenerateQuizRequest): Promise<Generat
       },
       body: JSON.stringify(params),
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     
     const data = await response.json();
     return data;
