@@ -26,7 +26,7 @@ def get_mcq_generator():
             raise
     return mcq_generator
 
-@app.route('/api/generate', methods=['POST'])
+@app.route('/api/generate', methods=['POST','OPTIONS'])
 def generate_quiz():
     """Generate MCQ questions from input text."""
     try:
