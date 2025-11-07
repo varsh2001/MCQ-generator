@@ -24,4 +24,4 @@ COPY . .
 ENV PORT=8080
 
 # Run with Gunicorn — 1 worker, no timeout (useful for model init)
-CMD exec gunicorn --bind :$PORT --workers 1 --timeout 0 flask_api:app
+CMD exec gunicorn --bind :$PORT --workers 1 --timeout 0 app:app
