@@ -9,5 +9,6 @@ torch==2.5.1
 transformers==4.44.0
 scikit-learn==1.5.2
 numpy==1.26.4
-spacy==3.7.2
+--prefer-binary
+spacy==3.6.1
 gunicorn==21.2.0
