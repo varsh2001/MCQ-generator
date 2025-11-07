@@ -1,102 +1,106 @@
 import re
 import random
+import requests
 from typing import List, Dict
+from keybert import KeyBERT
 from nltk.tokenize import sent_tokenize
+from flashtext import KeywordProcessor
 from nltk.corpus import wordnet as wn
 import nltk
-from transformers import pipeline
-from keybert import KeyBERT
 
-# Ensure required NLTK data
-for pkg in ['punkt', 'wordnet', 'stopwords']:
+# NLTK downloads (quiet)
+for resource in ["punkt", "wordnet", "stopwords"]:
     try:
-        nltk.data.find(f'tokenizers/{pkg}') if pkg == 'punkt' else nltk.data.find(f'corpora/{pkg}')
+        nltk.data.find(f"tokenizers/{resource}") if resource == "punkt" else nltk.data.find(f"corpora/{resource}")
     except LookupError:
-        nltk.download(pkg, quiet=True)
-
+        nltk.download(resource, quiet=True)
 
 class MCQGenerator:
     def __init__(self):
-        # Lightweight models
-        print("Loading lightweight models...")
-        self.summarizer = pipeline("summarization", model="t5-small", device=-1)  # CPU
-        self.kw_model = KeyBERT(model="distilbert-base-uncased")
+        # Lightweight sentence-transformers model for keyword extraction
+        self.bert = KeyBERT(model="all-MiniLM-L6-v2")  # ~82MB, fast, free-tier friendly
 
-    def summarize_text(self, text: str, max_length: int = 150) -> str:
+    def extract_keywords(self, text: str, top_n: int = 10) -> List[str]:
         try:
-            summary = self.summarizer(text, max_length=max_length, min_length=50, do_sample=False)
-            return summary[0]['summary_text']
-        except Exception as e:
-            print(f"Summarization error: {e}")
-            return text
-
-    def extract_keywords(self, text: str, top_n: int = 5) -> List[str]:
-        try:
-            keywords = self.kw_model.extract_keywords(text, stop_words='english', top_n=top_n)
-            return [k[0] if isinstance(k, tuple) else k for k in keywords]
+            keywords = self.bert.extract_keywords(text, stop_words="english", top_n=top_n)
+            return [kw[0] if isinstance(kw, tuple) else kw for kw in keywords]
         except Exception as e:
             print(f"Keyword extraction error: {e}")
             return []
 
     def tokenize_sentences(self, text: str) -> List[str]:
-        sentences = sent_tokenize(text)
-        return [s.strip() for s in sentences if len(s) > 20]
+        try:
+            sentences = sent_tokenize(text)
+            return [s.strip() for s in sentences if len(s) > 20]
+        except Exception as e:
+            print(f"Sentence tokenization error: {e}")
+            return []
 
-    def get_distractors_wordnet(self, word: str) -> List[str]:
-        word = word.replace(" ", "_").lower()
+    def get_sentences_for_keyword(self, keywords: List[str], sentences: List[str]) -> Dict[str, List[str]]:
+        keyword_processor = KeywordProcessor()
+        keyword_sentences = {word: [] for word in keywords}
+        for word in keywords:
+            keyword_processor.add_keyword(word)
+        for sentence in sentences:
+            found = keyword_processor.extract_keywords(sentence)
+            for key in found:
+                keyword_sentences[key].append(sentence)
+        return keyword_sentences
+
+    def get_distractors_wordnet(self, syn, word: str) -> List[str]:
         distractors = []
-        synsets = wn.synsets(word, 'n')
-        if synsets:
-            try:
-                hypernym = synsets[0].hypernyms()
-                if hypernym:
-                    for hyponym in hypernym[0].hyponyms():
-                        name = hyponym.lemmas()[0].name().replace("_", " ").title()
-                        if name.lower() != word and name not in distractors:
-                            distractors.append(name)
-            except Exception:
-                pass
+        try:
+            hypernym = syn.hypernyms()
+            if hypernym:
+                for item in hypernym[0].hyponyms():
+                    name = item.lemmas()[0].name().replace("_", " ").capitalize()
+                    if name.lower() != word.lower() and name not in distractors:
+                        distractors.append(name)
+        except:
+            pass
         return distractors
 
+    def get_wordsense(self, sent: str, word: str):
+        try:
+            synsets = wn.synsets(word, 'n')
+            if not synsets:
+                return None
+            # Simple Lesk overlap algorithm
+            sent_words = set(sent.lower().split())
+            best_synset = synsets[0]
+            max_overlap = 0
+            for syn in synsets:
+                context = set((syn.definition() + ' ' + ' '.join(syn.examples())).lower().split())
+                overlap = len(sent_words.intersection(context))
+                if overlap > max_overlap:
+                    best_synset = syn
+                    max_overlap = overlap
+            return best_synset
+        except:
+            return None
+
     def generate_questions(self, text: str, num_questions: int = 5) -> List[Dict]:
+        sentences = self.tokenize_sentences(text)
+        keywords = self.extract_keywords(text, top_n=num_questions*2)
+        mapping = self.get_sentences_for_keyword(keywords, sentences)
+        
         questions = []
-
-        # Step 1: Summarize
-        summary = self.summarize_text(text)
-
-        # Step 2: Extract keywords
-        keywords = self.extract_keywords(summary, top_n=num_questions*2)
-
-        # Step 3: Tokenize sentences
-        sentences = self.tokenize_sentences(summary)
-
-        # Step 4: Map keywords to sentences
-        keyword_sent_map = {}
-        for kw in keywords:
-            keyword_sent_map[kw] = [s for s in sentences if kw.lower() in s.lower()]
-
-        # Step 5: Generate questions
-        idx = 1
-        for kw, sents in keyword_sent_map.items():
-            if len(questions) >= num_questions or not sents:
+        for idx, keyword in enumerate(mapping):
+            if idx >= num_questions:
+                break
+            if not mapping[keyword]:
                 continue
-
-            sentence = sents[0]
-            question_text = re.sub(re.escape(kw), " _______ ", sentence, flags=re.IGNORECASE)
-
-            # Distractors
-            distractors = self.get_distractors_wordnet(kw)
+            sent = mapping[keyword][0]
+            syn = self.get_wordsense(sent, keyword)
+            distractors = self.get_distractors_wordnet(syn, keyword) if syn else []
             if len(distractors) < 3:
-                distractors += [kw + "X", kw + "Y", kw + "Z"]  # fallback
-
-            choices = [kw.title()] + distractors[:3]
-            random.shuffle(choices)
-
+                continue
+            all_options = [keyword.capitalize()] + distractors[:3]
+            random.shuffle(all_options)
+            question_text = re.sub(re.escape(keyword), "_______", sent, flags=re.IGNORECASE)
             questions.append({
-                "question": f"{idx}. {question_text}",
-                "options": choices,
-                "answer": kw.title()
+                "question": f"{idx+1}. {question_text}",
+                "options": all_options,
+                "answer": keyword.capitalize()
             })
-            idx += 1
-
         return questions
