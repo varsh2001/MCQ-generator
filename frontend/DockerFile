@@ -1,13 +1,20 @@
 # Build stage
 FROM node:20-slim AS builder
 WORKDIR /app
+
+# Add these two lines
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
 COPY package*.json ./
 RUN npm ci
 COPY . .
+# This build command will now see the VITE_API_URL
 RUN npm run build
 
 # Serve stage
 FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 8080
+COPY --from=builder /app/build /usr/share/nginx/html
+# You can go back to port 80 here, just tell Cloud Run
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
